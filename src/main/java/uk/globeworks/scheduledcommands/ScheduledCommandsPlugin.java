@@ -1,4 +1,4 @@
-package com.example.scheduledcommands;
+package uk.globeworks.scheduledcommands;
 
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;

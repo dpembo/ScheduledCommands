@@ -4,13 +4,13 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.example</groupId>
+    <groupId>uk.globeworks</groupId>
     <artifactId>ScheduledCommands</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
     <packaging>jar</packaging>
 
     <name>ScheduledCommands</name>
-    <description>Run console commands on a cron-like schedule</description>
+    <description>Run console commands on cron, join, and Globeworks history events</description>
 
     <properties>
         <java.version>25</java.version>
@@ -35,6 +35,12 @@
             <groupId>com.cronutils</groupId>
             <artifactId>cron-utils</artifactId>
             <version>9.2.1</version>
+        </dependency>
+        <dependency>
+            <groupId>uk.globeworks</groupId>
+            <artifactId>globeworks-api</artifactId>
+            <version>1.0.0</version>
+            <scope>provided</scope>
         </dependency>
     </dependencies>
 
@@ -62,7 +68,7 @@
                             <relocations>
                                 <relocation>
                                     <pattern>com.cronutils</pattern>
-                                    <shadedPattern>com.example.scheduledcommands.libs.cronutils</shadedPattern>
+                                    <shadedPattern>uk.globeworks.scheduledcommands.libs.cronutils</shadedPattern>
                                 </relocation>
                             </relocations>
                             <minimizeJar>true</minimizeJar>

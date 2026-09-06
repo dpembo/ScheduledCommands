@@ -1,16 +1,23 @@
 # Cron format: either 5 fields (min hour day-of-month month day-of-week)
 # or 6 fields (sec min hour day-of-month month day-of-week)
-# Examples:
-#   "0 0 * * *"          → every day at midnight
-#   "0 */15 * * * *"     → every 15 minutes (with seconds)
-#   "0 30 8 * * 1-5"     → 08:30 on weekdays
 #
 # Special triggers (instead of cron):
-#   trigger: join        → runs when a player joins the server
+#   trigger: join          → player joins the server
+#   trigger: globeworks    → GlobeworksAPI GenericHistoryEvent (requires GlobeworksAPI)
+#                            aliases: gw, history, event
 #
-# Placeholders available on join schedules:
-#   %player%  → player name
-#   %uuid%    → player UUID
+# Globeworks schedules need one of:
+#   event-type: diplomacy.war_declared
+#   event-types:
+#     - diplomacy.war_declared
+#     - diplomacy.alliance_formed
+#   Wildcards: diplomacy.*  or  *
+#
+# Placeholders:
+#   join:        %player%  %uuid%
+#   globeworks:  %eventType%  %eventId%  %nation%  %nationId%  %otherNation%
+#                %player%  %uuid% (first actor if online / known)
+#                plus any payload key, e.g. %group% %townName% %count%
 #
 # Timezone for cron schedules is the server's default timezone.
 
@@ -27,14 +34,38 @@ schedules:
     commands:
       - "say This is the hourly announcement!"
 
-  every-5-minutes:
-    cron: "0 */5 * * * *"
-    commands:
-      - "say Five minutes have passed."
-
-  # Special: runs every time a player joins
   welcome-on-join:
     trigger: join
     commands:
       - "say Welcome to the server, %player%!"
       - "tell %player% Enjoy your stay!"
+
+  # ── Globeworks examples (need GlobeworksAPI + producers: Diplomacy / Bridges) ──
+
+  announce-war:
+    trigger: globeworks
+    event-type: diplomacy.war_declared
+    commands:
+      - "say §cWar! §f%nation% has declared war on %otherNation%!"
+
+  announce-alliance:
+    trigger: globeworks
+    event-types:
+      - diplomacy.alliance_formed
+      - diplomacy.alliance_broken
+    commands:
+      - "say §eDiplomacy: §f%nation% / %otherNation% — %eventType%"
+
+  announce-siege:
+    trigger: globeworks
+    event-type: siegewar.siege_started
+    commands:
+      - "say §6Siege: §f%nation% is attacking %townName%!"
+
+  announce-rank:
+    trigger: globeworks
+    event-types:
+      - luckperms.rank_granted
+      - luckperms.rank_removed
+    commands:
+      - "say §b%player% §f— %eventType% (%group%)"

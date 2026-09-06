@@ -1,60 +1,54 @@
 # ScheduledCommands
 
-Simple Paper 26.2 plugin that runs console commands on cron-like schedules **and** on player join.
+Paper plugin that runs console commands on:
 
-## Features
-
-- Config-driven schedules using cron expressions (5-field Unix or 6-field with seconds)
-- Special `trigger: join` for player join events (cannot be expressed with cron)
-- Any number of commands per schedule
-- Placeholders on join schedules: `%player%`, `%uuid%`
-- Automatically reschedules the next cron run
-- `/schedcmds reload` to reload config without restart (permission: `schedcmds.reload`)
+- **Cron** schedules
+- **Player join**
+- **Globeworks** `GenericHistoryEvent` (Diplomacy, Bridges, etc.)
 
 ## Requirements
 
-- Paper 26.2
-- Java 25
+- Paper 26.2 / Java 25
+- **GlobeworksAPI** (soft) — only needed for `trigger: globeworks` schedules
 
-## Building
+## Build
 
 ```bash
+mvn install:install-file -Dfile=libs/globeworks-api-1.0.0.jar \
+  -DgroupId=uk.globeworks -DartifactId=globeworks-api -Dversion=1.0.0 -Dpackaging=jar
 mvn clean package
 ```
 
-The shaded JAR will be in `target/ScheduledCommands-1.0.0.jar`.
+## Globeworks triggers
 
-## Installation
-
-1. Place the JAR in your server's `plugins/` folder
-2. Start the server
-3. Edit `plugins/ScheduledCommands/config.yml`
-4. Run `/schedcmds reload` (or restart)
-
-## Config examples
-
-### Cron schedules
 ```yaml
 schedules:
-  daily-reset:
-    cron: "0 0 0 * * *"
+  announce-war:
+    trigger: globeworks
+    event-type: diplomacy.war_declared
     commands:
-      - "say Daily reset starting..."
-      - "time set day"
+      - "say War! %nation% declared war on %otherNation%!"
+
+  diplomacy-any:
+    trigger: globeworks
+    event-type: diplomacy.*
+    commands:
+      - "say %eventType%: %nation% / %otherNation%"
 ```
 
-### Player join schedule
-```yaml
-schedules:
-  welcome-on-join:
-    trigger: join          # also accepts: player_join, on_join
-    commands:
-      - "say Welcome to the server, %player%!"
-      - "tell %player% Enjoy your stay!"
-```
+### Placeholders (globeworks)
 
-Supported placeholders on join schedules:
-- `%player%` → player name
-- `%uuid%` → player UUID
+| Placeholder | Source |
+|-------------|--------|
+| `%eventType%` | Event type string |
+| `%eventId%` | Event UUID |
+| `%nation%` / `%nationId%` | Primary nation |
+| `%otherNation%` | From payload when present |
+| `%player%` / `%uuid%` | First actor (if any) |
+| `%…%` | Any payload key (`%group%`, `%townName%`, `%count%`, …) |
 
-Cron expressions use the server's default timezone.
+Events are produced by **Diplomacy** and **GlobeworksBridges**, not by this plugin.
+
+## Commands
+
+`/schedcmds reload` — reload config (`schedcmds.reload`, default op)
