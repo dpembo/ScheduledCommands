@@ -1,0 +1,40 @@
+# Cron format: either 5 fields (min hour day-of-month month day-of-week)
+# or 6 fields (sec min hour day-of-month month day-of-week)
+# Examples:
+#   "0 0 * * *"          → every day at midnight
+#   "0 */15 * * * *"     → every 15 minutes (with seconds)
+#   "0 30 8 * * 1-5"     → 08:30 on weekdays
+#
+# Special triggers (instead of cron):
+#   trigger: join        → runs when a player joins the server
+#
+# Placeholders available on join schedules:
+#   %player%  → player name
+#   %uuid%    → player UUID
+#
+# Timezone for cron schedules is the server's default timezone.
+
+schedules:
+  daily-reset:
+    cron: "0 0 0 * * *"
+    commands:
+      - "say Daily reset starting..."
+      - "time set day"
+      - "weather clear"
+
+  hourly-announcement:
+    cron: "0 0 * * * *"
+    commands:
+      - "say This is the hourly announcement!"
+
+  every-5-minutes:
+    cron: "0 */5 * * * *"
+    commands:
+      - "say Five minutes have passed."
+
+  # Special: runs every time a player joins
+  welcome-on-join:
+    trigger: join
+    commands:
+      - "say Welcome to the server, %player%!"
+      - "tell %player% Enjoy your stay!"

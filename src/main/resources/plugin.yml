@@ -1,0 +1,15 @@
+name: ScheduledCommands
+version: '${project.version}'
+main: uk.globeworks.scheduledcommands.ScheduledCommandsPlugin
+api-version: '26.2'
+description: Run any number of console commands on cron-like schedules and on player join
+author: Globeworks UK
+commands:
+  schedcmds:
+    description: Reload schedules
+    usage: /schedcmds reload
+    permission: schedcmds.reload
+permissions:
+  schedcmds.reload:
+    description: Allows reloading the schedule config
+    default: op
