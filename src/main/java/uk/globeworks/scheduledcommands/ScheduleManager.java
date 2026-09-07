@@ -12,8 +12,6 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.scheduler.BukkitTask;
-import uk.globeworks.api.GenericHistoryEvent;
-import uk.globeworks.api.NationRef;
 
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -25,7 +23,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 
 import static com.cronutils.model.CronType.QUARTZ;
 import static com.cronutils.model.CronType.UNIX;
@@ -39,6 +36,8 @@ public class ScheduleManager implements Listener {
     private final CronParser unixParser;
     private final CronParser quartzParser;
     private boolean globeworksAvailable;
+    private Listener globeworksListener;
+    private long joinDelayTicks = 200L; // 10s default
 
     public ScheduleManager(ScheduledCommandsPlugin plugin) {
         this.plugin = plugin;
@@ -54,9 +53,18 @@ public class ScheduleManager implements Listener {
         globeworksAvailable = Bukkit.getPluginManager().getPlugin("GlobeworksAPI") != null
             && Bukkit.getPluginManager().isPluginEnabled("GlobeworksAPI");
 
+        // Seconds after join before running join schedules (non-blocking)
+        double joinDelaySec = plugin.getConfig().getDouble("join-delay-seconds", 10.0);
+        if (joinDelaySec < 0) {
+            joinDelaySec = 0;
+        }
+        this.joinDelayTicks = Math.max(0L, Math.round(joinDelaySec * 20.0));
+        plugin.getLogger().info("Join command delay: " + joinDelaySec + "s (" + joinDelayTicks + " ticks)");
+
         ConfigurationSection section = plugin.getConfig().getConfigurationSection("schedules");
         if (section == null) {
             plugin.getLogger().warning("No 'schedules' section found in config.yml");
+            Bukkit.getPluginManager().registerEvents(this, plugin);
             return;
         }
 
@@ -64,23 +72,22 @@ public class ScheduleManager implements Listener {
             ConfigurationSection entry = section.getConfigurationSection(key);
             if (entry == null) continue;
 
-            List<String> commands = entry.getStringList("commands");
+            List<String> commands = readCommands(entry);
             if (commands.isEmpty()) {
-                plugin.getLogger().warning("Skipping schedule '" + key + "' (no commands)");
+                plugin.getLogger().warning("Skipping schedule '" + key
+                    + "' (no commands — use a YAML list under commands:)");
                 continue;
             }
 
             String trigger = entry.getString("trigger", "").trim().toLowerCase(Locale.ROOT);
             String cronExpr = entry.getString("cron");
 
-            // Player join
             if (trigger.equals("join") || trigger.equals("player_join") || trigger.equals("on_join")) {
                 joinSchedules.add(new JoinSchedule(key, commands));
                 plugin.getLogger().info("Loaded join schedule '" + key + "' (" + commands.size() + " command(s))");
                 continue;
             }
 
-            // Globeworks GenericHistoryEvent
             if (isGlobeworksTrigger(trigger)) {
                 if (!globeworksAvailable) {
                     plugin.getLogger().warning("Skipping schedule '" + key
@@ -99,7 +106,6 @@ public class ScheduleManager implements Listener {
                 continue;
             }
 
-            // Cron-based
             if (cronExpr == null || cronExpr.isBlank()) {
                 plugin.getLogger().warning("Skipping schedule '" + key + "' (missing cron or valid trigger)");
                 continue;
@@ -115,10 +121,43 @@ public class ScheduleManager implements Listener {
             plugin.getLogger().info("Loaded cron schedule '" + key + "': " + cronExpr);
         }
 
-        boolean needListener = !joinSchedules.isEmpty() || !globeworksSchedules.isEmpty();
-        if (needListener) {
-            Bukkit.getPluginManager().registerEvents(this, plugin);
+        // Join listener — no dependency on GlobeworksAPI classes
+        Bukkit.getPluginManager().registerEvents(this, plugin);
+        plugin.getLogger().info("Join listener registered (" + joinSchedules.size() + " schedule(s))");
+
+        // Globeworks listener in a separate class (avoids classloader issues on this listener)
+        if (globeworksAvailable && !globeworksSchedules.isEmpty()) {
+            try {
+                globeworksListener = new GlobeworksEventListener(
+                    plugin,
+                    List.copyOf(globeworksSchedules),
+                    this::runCommands
+                );
+                Bukkit.getPluginManager().registerEvents(globeworksListener, plugin);
+                plugin.getLogger().info("Globeworks listener registered ("
+                    + globeworksSchedules.size() + " schedule(s))");
+            } catch (Throwable t) {
+                plugin.getLogger().severe("Failed to register Globeworks listener: " + t.getMessage());
+                t.printStackTrace();
+            }
         }
+
+        plugin.getLogger().info("Schedules ready: "
+            + runningTasks.size() + " cron, "
+            + joinSchedules.size() + " join, "
+            + globeworksSchedules.size() + " globeworks");
+    }
+
+    private List<String> readCommands(ConfigurationSection entry) {
+        List<String> list = entry.getStringList("commands");
+        if (list != null && !list.isEmpty()) {
+            return list;
+        }
+        String single = entry.getString("commands");
+        if (single != null && !single.isBlank()) {
+            return List.of(single.trim());
+        }
+        return List.of();
     }
 
     private static boolean isGlobeworksTrigger(String trigger) {
@@ -129,18 +168,13 @@ public class ScheduleManager implements Listener {
             || trigger.equals("event");
     }
 
-    /**
-     * event-type: single string, or event-types: list.
-     * Supports trailing * wildcards, e.g. diplomacy.*
-     */
     private Set<String> resolveEventTypes(ConfigurationSection entry) {
         Set<String> types = new HashSet<>();
         String single = entry.getString("event-type");
         if (single != null && !single.isBlank()) {
             types.add(single.trim());
         }
-        List<String> list = entry.getStringList("event-types");
-        for (String t : list) {
+        for (String t : entry.getStringList("event-types")) {
             if (t != null && !t.isBlank()) {
                 types.add(t.trim());
             }
@@ -148,37 +182,7 @@ public class ScheduleManager implements Listener {
         return types;
     }
 
-    @EventHandler
-    public void onPlayerJoin(PlayerJoinEvent event) {
-        Player player = event.getPlayer();
-        for (JoinSchedule schedule : joinSchedules) {
-            runCommands(schedule.name(), schedule.commands(), player, Map.of());
-        }
-    }
-
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    public void onGlobeworksHistory(GenericHistoryEvent event) {
-        if (globeworksSchedules.isEmpty()) {
-            return;
-        }
-        String type = event.getEventType();
-        if (type == null) {
-            return;
-        }
-
-        Map<String, String> placeholders = buildPlaceholders(event);
-
-        for (GlobeworksSchedule schedule : globeworksSchedules) {
-            if (!matchesEventType(schedule.eventTypes(), type)) {
-                continue;
-            }
-            // Prefer online actor for %player% substitution when present
-            Player actor = firstOnlineActor(event);
-            runCommands(schedule.name(), schedule.commands(), actor, placeholders);
-        }
-    }
-
-    private static boolean matchesEventType(Set<String> patterns, String eventType) {
+    static boolean matchesEventType(Set<String> patterns, String eventType) {
         for (String pattern : patterns) {
             if (pattern.equals("*") || pattern.equalsIgnoreCase(eventType)) {
                 return true;
@@ -193,95 +197,82 @@ public class ScheduleManager implements Listener {
         return false;
     }
 
-    private Map<String, String> buildPlaceholders(GenericHistoryEvent event) {
-        Map<String, String> map = new HashMap<>();
-        map.put("eventType", nullToEmpty(event.getEventType()));
-        map.put("eventId", event.getEventId() != null ? event.getEventId().toString() : "");
+    @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = false)
+    public void onPlayerJoin(PlayerJoinEvent event) {
+        if (joinSchedules.isEmpty()) {
+            return;
+        }
+        Player player = event.getPlayer();
+        final java.util.UUID uuid = player.getUniqueId();
+        final String name = player.getName();
+        final List<JoinSchedule> toRun = List.copyOf(joinSchedules);
 
-        NationRef nation = event.getNation();
-        if (nation != null) {
-            map.put("nation", nullToEmpty(strip(nation.cachedName())));
-            map.put("nationId", nation.id() != null ? nation.id().toString() : "");
+        plugin.getLogger().info("Player join: " + name
+            + " — " + toRun.size() + " join schedule(s) in "
+            + (joinDelayTicks / 20.0) + "s");
+
+        Runnable run = () -> {
+            Player online = Bukkit.getPlayer(uuid);
+            if (online == null || !online.isOnline()) {
+                plugin.getLogger().info("Skipping join schedules for " + name + " (left before delay elapsed)");
+                return;
+            }
+            for (JoinSchedule schedule : toRun) {
+                runCommands(schedule.name(), schedule.commands(), online, Map.of());
+            }
+        };
+
+        if (joinDelayTicks <= 0) {
+            run.run();
         } else {
-            map.put("nation", "");
-            map.put("nationId", "");
+            Bukkit.getScheduler().runTaskLater(plugin, run, joinDelayTicks);
         }
-
-        Map<String, String> payload = event.getPayload();
-        if (payload != null) {
-            for (Map.Entry<String, String> e : payload.entrySet()) {
-                if (e.getKey() != null) {
-                    map.put(e.getKey(), nullToEmpty(strip(e.getValue())));
-                }
-            }
-            // Common aliases
-            if (payload.containsKey("otherNation") && !map.containsKey("otherNation")) {
-                map.put("otherNation", nullToEmpty(strip(payload.get("otherNation"))));
-            }
-        }
-        map.putIfAbsent("otherNation", "");
-
-        List<UUID> actors = event.getActorIds();
-        if (actors != null && !actors.isEmpty()) {
-            UUID first = actors.get(0);
-            map.put("uuid", first.toString());
-            Player p = Bukkit.getPlayer(first);
-            map.put("player", p != null ? p.getName() : first.toString());
-        } else {
-            map.putIfAbsent("uuid", "");
-            map.putIfAbsent("player", "");
-        }
-        return map;
-    }
-
-    private Player firstOnlineActor(GenericHistoryEvent event) {
-        List<UUID> actors = event.getActorIds();
-        if (actors == null) {
-            return null;
-        }
-        for (UUID id : actors) {
-            Player p = Bukkit.getPlayer(id);
-            if (p != null && p.isOnline()) {
-                return p;
-            }
-        }
-        return null;
-    }
-
-    private static String nullToEmpty(String s) {
-        return s == null ? "" : s;
-    }
-
-    private static String strip(String input) {
-        if (input == null) {
-            return null;
-        }
-        return input.replaceAll("(?i)[§&][0-9a-fk-orx]", "")
-            .replace('_', ' ')
-            .replaceAll("\\s+", " ")
-            .trim();
     }
 
     private Cron parseCron(String expression) {
         String trimmed = expression.trim();
-        try {
-            int fields = trimmed.split("\\s+").length;
-            if (fields >= 6) {
-                return quartzParser.parse(trimmed);
-            } else {
-                return unixParser.parse(trimmed);
-            }
-        } catch (Exception e) {
+        String[] parts = trimmed.split("\\s+");
+        int fields = parts.length;
+
+        String quartzExpr = trimmed;
+        if (fields >= 6) {
+            quartzExpr = toQuartzCompatible(parts);
+        }
+
+        if (fields >= 6) {
             try {
-                return unixParser.parse(trimmed);
+                return quartzParser.parse(quartzExpr);
+            } catch (Exception e) {
+                plugin.getLogger().warning("Quartz parse failed for '" + quartzExpr
+                    + "' (from '" + trimmed + "'): " + e.getMessage());
+            }
+            try {
+                return quartzParser.parse(trimmed);
             } catch (Exception ignored) {
-                try {
-                    return quartzParser.parse(trimmed);
-                } catch (Exception ignored2) {
-                    return null;
-                }
             }
         }
+
+        try {
+            return unixParser.parse(trimmed);
+        } catch (Exception e) {
+            try {
+                return quartzParser.parse(toQuartzCompatible(
+                    fields >= 6 ? parts : (trimmed + " *").trim().split("\\s+")));
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
+    }
+
+    private static String toQuartzCompatible(String[] parts) {
+        if (parts == null || parts.length < 6) {
+            return parts == null ? "" : String.join(" ", parts);
+        }
+        String[] p = java.util.Arrays.copyOf(parts, 6);
+        if ("*".equals(p[3]) && "*".equals(p[5])) {
+            p[5] = "?";
+        }
+        return String.join(" ", p);
     }
 
     private void scheduleNext(String key, Cron cron, List<String> commands) {
@@ -307,12 +298,13 @@ public class ScheduleManager implements Listener {
         }
     }
 
-    private void runCommands(String key, List<String> commands, Player player, Map<String, String> extra) {
+    void runCommands(String key, List<String> commands, Player player, Map<String, String> extra) {
         plugin.getLogger().info("Running schedule '" + key + "' (" + commands.size() + " command(s))"
             + (player != null ? " for " + player.getName() : ""));
         for (String cmd : commands) {
             if (cmd == null || cmd.isBlank()) continue;
             String processed = applyPlaceholders(cmd, player, extra);
+            plugin.getLogger().info("  -> /" + processed);
             Bukkit.dispatchCommand(Bukkit.getConsoleSender(), processed);
         }
     }
@@ -321,7 +313,8 @@ public class ScheduleManager implements Listener {
         String processed = cmd;
         if (extra != null) {
             for (Map.Entry<String, String> e : extra.entrySet()) {
-                processed = processed.replace("%" + e.getKey() + "%", e.getValue() != null ? e.getValue() : "");
+                processed = processed.replace("%" + e.getKey() + "%",
+                    e.getValue() != null ? e.getValue() : "");
             }
         }
         if (player != null) {
@@ -340,9 +333,14 @@ public class ScheduleManager implements Listener {
         joinSchedules.clear();
         globeworksSchedules.clear();
         org.bukkit.event.HandlerList.unregisterAll(this);
+        if (globeworksListener != null) {
+            org.bukkit.event.HandlerList.unregisterAll(globeworksListener);
+            globeworksListener = null;
+        }
     }
 
     private record JoinSchedule(String name, List<String> commands) {}
 
-    private record GlobeworksSchedule(String name, Set<String> eventTypes, List<String> commands) {}
+    /** Public so GlobeworksEventListener can use it. */
+    public record GlobeworksSchedule(String name, Set<String> eventTypes, List<String> commands) {}
 }

@@ -11,6 +11,7 @@ public final class ScheduledCommandsPlugin extends JavaPlugin {
 
     @Override
     public void onEnable() {
+        getLogger().info(Globeworks.logo("ScheduledCommands", getDescription().getVersion()));
         saveDefaultConfig();
         scheduleManager = new ScheduleManager(this);
         scheduleManager.loadAndStart();

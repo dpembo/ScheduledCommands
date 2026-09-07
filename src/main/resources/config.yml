@@ -1,3 +1,7 @@
+# Delay after player join before running join-trigger schedules (seconds).
+# Non-blocking; uses the scheduler. Set 0 for immediate.
+join-delay-seconds: 10
+
 # Cron format: either 5 fields (min hour day-of-month month day-of-week)
 # or 6 fields (sec min hour day-of-month month day-of-week)
 #
@@ -23,14 +27,14 @@
 
 schedules:
   daily-reset:
-    cron: "0 0 0 * * *"
+    cron: "0 0 0 * * ?"
     commands:
       - "say Daily reset starting..."
       - "time set day"
       - "weather clear"
 
   hourly-announcement:
-    cron: "0 0 * * * *"
+    cron: "0 0 * * * ?"
     commands:
       - "say This is the hourly announcement!"
 
