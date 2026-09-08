@@ -50,13 +50,19 @@ Output: `target/ScheduledCommands-1.1.0.jar` (cron-utils is shaded in).
 
 \---
 
-## Commands \& permissions
+## Commands & permissions
 
 |Command|Permission|Default|Description|
 |-|-|-|-|
 |`/schedcmds reload`|`schedcmds.reload`|op|Reload `config.yml` and reschedule everything|
+|`/schedcmds list`|`schedcmds.list`|op|List loaded schedules (name, when it runs, command count)|
+|`/schedcmds test <name>`|`schedcmds.test`|op|Manually run a schedule’s commands as console (for testing)|
 
-\---
+Aliases: `list` also accepts `ls`; `test` also accepts `run` / `execute`.
+
+`/schedcmds test` executes the schedule’s commands immediately as the console with **no player context** and **no event placeholders** (any `%player%` / `%nation%` etc. are left unsubstituted). Use it to verify command syntax without waiting for the real trigger.
+
+---
 
 ## Configuration overview
 

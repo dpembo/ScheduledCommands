@@ -16,8 +16,10 @@ import org.bukkit.scheduler.BukkitTask;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -33,6 +35,8 @@ public class ScheduleManager implements Listener {
     private final Map<String, BukkitTask> runningTasks = new HashMap<>();
     private final List<JoinSchedule> joinSchedules = new ArrayList<>();
     private final List<GlobeworksSchedule> globeworksSchedules = new ArrayList<>();
+    /** All successfully loaded schedules, keyed by name (insertion order preserved). */
+    private final Map<String, ScheduleInfo> allSchedules = new LinkedHashMap<>();
     private final CronParser unixParser;
     private final CronParser quartzParser;
     private boolean globeworksAvailable;
@@ -49,6 +53,7 @@ public class ScheduleManager implements Listener {
         shutdown();
         joinSchedules.clear();
         globeworksSchedules.clear();
+        allSchedules.clear();
 
         globeworksAvailable = Bukkit.getPluginManager().getPlugin("GlobeworksAPI") != null
             && Bukkit.getPluginManager().isPluginEnabled("GlobeworksAPI");
@@ -84,6 +89,7 @@ public class ScheduleManager implements Listener {
 
             if (trigger.equals("join") || trigger.equals("player_join") || trigger.equals("on_join")) {
                 joinSchedules.add(new JoinSchedule(key, commands));
+                allSchedules.put(key, new ScheduleInfo(key, ScheduleType.JOIN, "on player join", commands));
                 plugin.getLogger().info("Loaded join schedule '" + key + "' (" + commands.size() + " command(s))");
                 continue;
             }
@@ -101,6 +107,8 @@ public class ScheduleManager implements Listener {
                     continue;
                 }
                 globeworksSchedules.add(new GlobeworksSchedule(key, types, commands));
+                String when = "on globeworks: " + String.join(", ", types);
+                allSchedules.put(key, new ScheduleInfo(key, ScheduleType.GLOBEWORKS, when, commands));
                 plugin.getLogger().info("Loaded globeworks schedule '" + key + "' types=" + types
                     + " (" + commands.size() + " command(s))");
                 continue;
@@ -118,6 +126,7 @@ public class ScheduleManager implements Listener {
             }
 
             scheduleNext(key, cron, commands);
+            allSchedules.put(key, new ScheduleInfo(key, ScheduleType.CRON, "cron: " + cronExpr.trim(), commands));
             plugin.getLogger().info("Loaded cron schedule '" + key + "': " + cronExpr);
         }
 
@@ -332,6 +341,7 @@ public class ScheduleManager implements Listener {
         runningTasks.clear();
         joinSchedules.clear();
         globeworksSchedules.clear();
+        allSchedules.clear();
         org.bukkit.event.HandlerList.unregisterAll(this);
         if (globeworksListener != null) {
             org.bukkit.event.HandlerList.unregisterAll(globeworksListener);
@@ -339,8 +349,53 @@ public class ScheduleManager implements Listener {
         }
     }
 
+    /** Returns an unmodifiable view of all loaded schedules (name → info). */
+    public Map<String, ScheduleInfo> getSchedules() {
+        return Collections.unmodifiableMap(allSchedules);
+    }
+
+    /**
+     * Manually run a schedule by name (op/test use).
+     * Executes the commands as console with no player context and no extra placeholders.
+     *
+     * @return true if the schedule existed and was executed
+     */
+    public boolean runScheduleNow(String key) {
+        ScheduleInfo info = allSchedules.get(key);
+        if (info == null) {
+            // case-insensitive fallback
+            for (Map.Entry<String, ScheduleInfo> e : allSchedules.entrySet()) {
+                if (e.getKey().equalsIgnoreCase(key)) {
+                    info = e.getValue();
+                    break;
+                }
+            }
+        }
+        if (info == null) {
+            return false;
+        }
+        runCommands(info.name(), info.commands(), null, Map.of());
+        return true;
+    }
+
     private record JoinSchedule(String name, List<String> commands) {}
 
     /** Public so GlobeworksEventListener can use it. */
     public record GlobeworksSchedule(String name, Set<String> eventTypes, List<String> commands) {}
+
+    public enum ScheduleType {
+        CRON, JOIN, GLOBEWORKS
+    }
+
+    /** Snapshot of a loaded schedule for listing / testing. */
+    public record ScheduleInfo(
+        String name,
+        ScheduleType type,
+        String whenDescription,
+        List<String> commands
+    ) {
+        public int commandCount() {
+            return commands == null ? 0 : commands.size();
+        }
+    }
 }

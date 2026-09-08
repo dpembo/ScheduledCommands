@@ -8,11 +8,18 @@ softdepend: [GlobeworksAPI]
 
 commands:
   schedcmds:
-    description: Reload schedules
-    usage: /schedcmds reload
+    description: Manage and test scheduled commands
+    usage: /schedcmds <reload|list|test> [schedule]
     permission: schedcmds.reload
+    aliases: [scheduledcommands]
 
 permissions:
   schedcmds.reload:
     description: Allows reloading the schedule config
+    default: op
+  schedcmds.list:
+    description: Allows listing loaded schedules
+    default: op
+  schedcmds.test:
+    description: Allows manually running a schedule for testing
     default: op
