@@ -42,6 +42,7 @@ public class ScheduleManager implements Listener {
     private boolean globeworksAvailable;
     private Listener globeworksListener;
     private long joinDelayTicks = 200L; // 10s default
+    private boolean debug;
 
     public ScheduleManager(ScheduledCommandsPlugin plugin) {
         this.plugin = plugin;
@@ -58,6 +59,8 @@ public class ScheduleManager implements Listener {
         globeworksAvailable = Bukkit.getPluginManager().getPlugin("GlobeworksAPI") != null
             && Bukkit.getPluginManager().isPluginEnabled("GlobeworksAPI");
 
+        this.debug = plugin.getConfig().getBoolean("debug", false);
+
         // Seconds after join before running join schedules (non-blocking)
         double joinDelaySec = plugin.getConfig().getDouble("join-delay-seconds", 10.0);
         if (joinDelaySec < 0) {
@@ -65,6 +68,7 @@ public class ScheduleManager implements Listener {
         }
         this.joinDelayTicks = Math.max(0L, Math.round(joinDelaySec * 20.0));
         plugin.getLogger().info("Join command delay: " + joinDelaySec + "s (" + joinDelayTicks + " ticks)");
+        plugin.getLogger().info("Debug logging: " + (debug ? "on" : "off"));
 
         ConfigurationSection section = plugin.getConfig().getConfigurationSection("schedules");
         if (section == null) {
@@ -216,14 +220,18 @@ public class ScheduleManager implements Listener {
         final String name = player.getName();
         final List<JoinSchedule> toRun = List.copyOf(joinSchedules);
 
-        plugin.getLogger().info("Player join: " + name
-            + " — " + toRun.size() + " join schedule(s) in "
-            + (joinDelayTicks / 20.0) + "s");
+        if (debug) {
+            plugin.getLogger().info("Player join: " + name
+                + " — " + toRun.size() + " join schedule(s) in "
+                + (joinDelayTicks / 20.0) + "s");
+        }
 
         Runnable run = () -> {
             Player online = Bukkit.getPlayer(uuid);
             if (online == null || !online.isOnline()) {
-                plugin.getLogger().info("Skipping join schedules for " + name + " (left before delay elapsed)");
+                if (debug) {
+                    plugin.getLogger().info("Skipping join schedules for " + name + " (left before delay elapsed)");
+                }
                 return;
             }
             for (JoinSchedule schedule : toRun) {
@@ -308,14 +316,33 @@ public class ScheduleManager implements Listener {
     }
 
     void runCommands(String key, List<String> commands, Player player, Map<String, String> extra) {
-        plugin.getLogger().info("Running schedule '" + key + "' (" + commands.size() + " command(s))"
-            + (player != null ? " for " + player.getName() : ""));
+        if (debug) {
+            plugin.getLogger().info("Running schedule '" + key + "' (" + commands.size() + " command(s))"
+                + (player != null ? " for " + player.getName() : ""));
+        }
         for (String cmd : commands) {
             if (cmd == null || cmd.isBlank()) continue;
             String processed = applyPlaceholders(cmd, player, extra);
-            plugin.getLogger().info("  -> /" + processed);
+            if (debug) {
+                plugin.getLogger().info("  -> /" + processed);
+            }
             Bukkit.dispatchCommand(Bukkit.getConsoleSender(), processed);
         }
+    }
+
+    public boolean isDebug() {
+        return debug;
+    }
+
+    /**
+     * Set debug logging and persist to config.yml.
+     * @return the new debug state
+     */
+    public boolean setDebug(boolean enabled) {
+        this.debug = enabled;
+        plugin.getConfig().set("debug", enabled);
+        plugin.saveConfig();
+        return debug;
     }
 
     private String applyPlaceholders(String cmd, Player player, Map<String, String> extra) {

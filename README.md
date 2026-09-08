@@ -57,10 +57,13 @@ Output: `target/ScheduledCommands-1.1.0.jar` (cron-utils is shaded in).
 |`/schedcmds reload`|`schedcmds.reload`|op|Reload `config.yml` and reschedule everything|
 |`/schedcmds list`|`schedcmds.list`|op|List loaded schedules (name, when it runs, command count)|
 |`/schedcmds test <name>`|`schedcmds.test`|op|Manually run a schedule’s commands as console (for testing)|
+|`/schedcmds debug [on\|off\|toggle\|status]`|`schedcmds.debug`|op|Toggle debug logging for schedule activation|
 
-Aliases: `list` also accepts `ls`; `test` also accepts `run` / `execute`.
+Aliases: `list` also accepts `ls`; `test` also accepts `run` / `execute`. With no argument, `debug` toggles.
 
 `/schedcmds test` executes the schedule’s commands immediately as the console with **no player context** and **no event placeholders** (any `%player%` / `%nation%` etc. are left unsubstituted). Use it to verify command syntax without waiting for the real trigger.
+
+When **debug** is on (config key `debug: true`, or toggled in-game), the console logs each schedule activation and every command dispatched. Load/reload messages are always shown.
 
 ---
 

@@ -42,7 +42,7 @@ public final class ScheduledCommandsPlugin extends JavaPlugin implements TabComp
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command,
                              @NotNull String label, @NotNull String[] args) {
         if (args.length == 0) {
-            sender.sendMessage("§eUsage: /schedcmds <reload|list|test> [schedule]");
+            sender.sendMessage("§eUsage: /schedcmds <reload|list|test|debug> [args]");
             return true;
         }
 
@@ -99,7 +99,41 @@ public final class ScheduledCommandsPlugin extends JavaPlugin implements TabComp
             return true;
         }
 
-        sender.sendMessage("§eUsage: /schedcmds <reload|list|test> [schedule]");
+        if (sub.equals("debug")) {
+            if (!sender.hasPermission("schedcmds.debug")) {
+                sender.sendMessage("§cNo permission.");
+                return true;
+            }
+            if (args.length == 1) {
+                // toggle
+                boolean now = scheduleManager.setDebug(!scheduleManager.isDebug());
+                sender.sendMessage(now
+                    ? "§aDebug logging §fenabled§a."
+                    : "§eDebug logging §fdisabled§e.");
+                return true;
+            }
+            String arg = args[1].toLowerCase(Locale.ROOT);
+            if (arg.equals("on") || arg.equals("true") || arg.equals("enable") || arg.equals("1")) {
+                scheduleManager.setDebug(true);
+                sender.sendMessage("§aDebug logging §fenabled§a.");
+            } else if (arg.equals("off") || arg.equals("false") || arg.equals("disable") || arg.equals("0")) {
+                scheduleManager.setDebug(false);
+                sender.sendMessage("§eDebug logging §fdisabled§e.");
+            } else if (arg.equals("toggle")) {
+                boolean now = scheduleManager.setDebug(!scheduleManager.isDebug());
+                sender.sendMessage(now
+                    ? "§aDebug logging §fenabled§a."
+                    : "§eDebug logging §fdisabled§e.");
+            } else if (arg.equals("status") || arg.equals("?")) {
+                sender.sendMessage("§7Debug logging is currently "
+                    + (scheduleManager.isDebug() ? "§aon" : "§coff") + "§7.");
+            } else {
+                sender.sendMessage("§eUsage: /schedcmds debug [on|off|toggle|status]");
+            }
+            return true;
+        }
+
+        sender.sendMessage("§eUsage: /schedcmds <reload|list|test|debug> [args]");
         return true;
     }
 
@@ -111,6 +145,7 @@ public final class ScheduledCommandsPlugin extends JavaPlugin implements TabComp
             if (sender.hasPermission("schedcmds.reload")) subs.add("reload");
             if (sender.hasPermission("schedcmds.list")) subs.add("list");
             if (sender.hasPermission("schedcmds.test")) subs.add("test");
+            if (sender.hasPermission("schedcmds.debug")) subs.add("debug");
             String prefix = args[0].toLowerCase(Locale.ROOT);
             return subs.stream().filter(s -> s.startsWith(prefix)).collect(Collectors.toList());
         }
@@ -124,6 +159,15 @@ public final class ScheduledCommandsPlugin extends JavaPlugin implements TabComp
             return scheduleManager.getSchedules().keySet().stream()
                 .filter(name -> name.toLowerCase(Locale.ROOT).startsWith(prefix))
                 .sorted()
+                .collect(Collectors.toList());
+        }
+        if (args.length == 2 && args[0].equalsIgnoreCase("debug")) {
+            if (!sender.hasPermission("schedcmds.debug")) {
+                return List.of();
+            }
+            String prefix = args[1].toLowerCase(Locale.ROOT);
+            return List.of("on", "off", "toggle", "status").stream()
+                .filter(s -> s.startsWith(prefix))
                 .collect(Collectors.toList());
         }
         return List.of();

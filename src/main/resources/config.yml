@@ -2,6 +2,10 @@
 # Non-blocking; uses the scheduler. Set 0 for immediate.
 join-delay-seconds: 10
 
+# When true, log each schedule activation and the individual commands run.
+# Toggle in-game with /schedcmds debug [on|off|toggle]
+debug: false
+
 # Cron format: either 5 fields (min hour day-of-month month day-of-week)
 # or 6 fields (sec min hour day-of-month month day-of-week)
 #
