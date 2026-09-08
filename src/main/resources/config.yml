@@ -26,6 +26,10 @@ join-delay-seconds: 10
 # Timezone for cron schedules is the server's default timezone.
 
 schedules:
+  other:
+    cron: "0 0 * * * ?"
+    commands: []
+    
   daily-reset:
     cron: "0 0 0 * * ?"
     commands:
